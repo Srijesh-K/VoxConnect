@@ -46,10 +46,11 @@ router.post('/check-recipient', protect, async (req, res) => {
       return res.status(400).json({ message: 'You cannot make a call to your own number.' });
     }
 
-    // 3. Check if recipient exists
-    const recipient = await userService.findByPhoneNumber(cleanNumber);
+    // 3. Check if recipient exists, register on the fly if not
+    let recipient = await userService.findByPhoneNumber(cleanNumber);
     if (!recipient) {
-      return res.status(404).json({ message: 'Recipient is not registered on VoxConnect yet.' });
+      console.log(`[Auto-Register] Registering recipient ${cleanNumber} on the fly`);
+      recipient = await userService.createUser(cleanNumber);
     }
 
     res.status(200).json({

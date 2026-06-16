@@ -31,6 +31,7 @@ export default function Dashboard() {
   // References for WebRTC and Sockets
   const socketRef = useRef(null);
   const pcRef = useRef(null);
+  const pcBotRef = useRef(null); // Reference for local loopback echo bot connection
   const localStreamRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const peerSocketIdRef = useRef(null); // socketId of the other peer
@@ -182,10 +183,14 @@ export default function Dashboard() {
       localStreamRef.current = null;
     }
 
-    // Close peer connection
+    // Close peer connections
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
+    }
+    if (pcBotRef.current) {
+      pcBotRef.current.close();
+      pcBotRef.current = null;
     }
 
     // Stop audio player
@@ -266,49 +271,105 @@ export default function Dashboard() {
       return;
     }
 
-    // 2. Create peer connection
-    const pc = new RTCPeerConnection(iceServersConfig);
-    pcRef.current = pc;
+    if (recipientSocketId === 'bot') {
+      // 2. Local Loopback (Echo Bot)
+      const pc = new RTCPeerConnection(iceServersConfig);
+      pcRef.current = pc;
 
-    // Track connection state
-    pc.onconnectionstatechange = () => {
-      setConnectionState(pc.connectionState);
-    };
+      const pcBot = new RTCPeerConnection(iceServersConfig);
+      pcBotRef.current = pcBot;
 
-    // Send local tracks
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      pc.onconnectionstatechange = () => {
+        setConnectionState(pc.connectionState);
+      };
 
-    // Handle ICE Candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current) {
-        socketRef.current.emit('webrtc-ice-candidate', {
-          toSocketId: recipientSocketId,
-          candidate: event.candidate,
-          callId
-        });
+      // Add local tracks to pc
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      // Exchange ICE candidates locally
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          pcBot.addIceCandidate(new RTCIceCandidate(event.candidate)).catch(e => {});
+        }
+      };
+
+      pcBot.onicecandidate = (event) => {
+        if (event.candidate) {
+          pc.addIceCandidate(new RTCIceCandidate(event.candidate)).catch(e => {});
+        }
+      };
+
+      // Play received tracks locally (echoes audio back to user)
+      pcBot.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (!remoteAudioRef.current) {
+          const audio = new Audio();
+          audio.srcObject = remoteStream;
+          audio.play().catch(e => console.error('Audio play failed:', e));
+          remoteAudioRef.current = audio;
+          setConnectionState('connected');
+        }
+      };
+
+      // Local SDP negotiation
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await pcBot.setRemoteDescription(offer);
+
+        const answer = await pcBot.createAnswer();
+        await pcBot.setLocalDescription(answer);
+        await pc.setRemoteDescription(answer);
+      } catch (err) {
+        console.error('Local WebRTC loopback SDP exchange failed:', err);
+        handleHangup(callId);
       }
-    };
 
-    // Play Remote Audio Stream
-    pc.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      if (!remoteAudioRef.current) {
-        const audio = new Audio();
-        audio.srcObject = remoteStream;
-        audio.play().catch(e => console.error('Audio play failed:', e));
-        remoteAudioRef.current = audio;
-      }
-    };
+    } else {
+      // 2. Real Peer Connection
+      const pc = new RTCPeerConnection(iceServersConfig);
+      pcRef.current = pc;
 
-    // 3. Create & send Offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      // Track connection state
+      pc.onconnectionstatechange = () => {
+        setConnectionState(pc.connectionState);
+      };
 
-    socketRef.current.emit('webrtc-offer', {
-      toSocketId: recipientSocketId,
-      offer,
-      callId
-    });
+      // Send local tracks
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      // Handle ICE Candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate && socketRef.current) {
+          socketRef.current.emit('webrtc-ice-candidate', {
+            toSocketId: recipientSocketId,
+            candidate: event.candidate,
+            callId
+          });
+        }
+      };
+
+      // Play Remote Audio Stream
+      pc.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        if (!remoteAudioRef.current) {
+          const audio = new Audio();
+          audio.srcObject = remoteStream;
+          audio.play().catch(e => console.error('Audio play failed:', e));
+          remoteAudioRef.current = audio;
+        }
+      };
+
+      // 3. Create & send Offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      socketRef.current.emit('webrtc-offer', {
+        toSocketId: recipientSocketId,
+        offer,
+        callId
+      });
+    }
   };
 
   // 3. Accept Call (Recipient Side)
