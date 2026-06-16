@@ -1,0 +1,13 @@
+{
+  "name": "voxconnect",
+  "version": "1.0.0",
+  "description": "VoxConnect Full-Stack WebRTC Calling App",
+  "scripts": {
+    "backend": "npm run dev --prefix backend",
+    "frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
