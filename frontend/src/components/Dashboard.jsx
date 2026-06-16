@@ -5,7 +5,7 @@ import Header from './Header';
 import CallHistory from './CallHistory';
 import ActiveCall from './ActiveCall';
 import IncomingCallModal from './IncomingCallModal';
-import { Phone, Search, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Phone, Search, AlertCircle, AlertTriangle, Settings } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
@@ -524,6 +524,16 @@ export default function Dashboard({ onAdminClick }) {
                 )}
               </button>
             </form>
+
+            {/* Quick Link to Admin Panel */}
+            <div className="mt-6 pt-4 border-t border-slate-800/80 text-center">
+              <button
+                onClick={onAdminClick}
+                className="inline-flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 font-semibold transition-colors focus:outline-none"
+              >
+                <Settings size={12} /> Open Admin Control Center
+              </button>
+            </div>
           </div>
         </div>
 

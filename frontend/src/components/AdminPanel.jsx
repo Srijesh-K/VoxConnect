@@ -284,7 +284,7 @@ export default function AdminPanel({ onBack }) {
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-2">
-                (Default dev key is: <span className="font-mono text-slate-400">voxconnect_admin_key_2026</span>)
+                (Default dev key is: <span className="font-mono text-slate-400">258025</span>)
               </p>
             </div>
 

@@ -7,7 +7,7 @@ const configService = require('../services/configService');
 // Admin Authorization Middleware
 const protectAdmin = (req, res, next) => {
   const adminKey = req.headers['x-admin-key'];
-  const expectedKey = process.env.ADMIN_ACCESS_KEY || 'voxconnect_admin_key_2026';
+  const expectedKey = process.env.ADMIN_ACCESS_KEY || '258025';
 
   if (!adminKey || adminKey !== expectedKey) {
     return res.status(401).json({ message: 'Unauthorized: Invalid admin access key' });
