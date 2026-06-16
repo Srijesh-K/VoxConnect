@@ -6,8 +6,10 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const callRoutes = require('./routes/call');
+const adminRoutes = require('./routes/admin');
 const userService = require('./services/userService');
 const callService = require('./services/callService');
+const configService = require('./services/configService');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +30,7 @@ connectDB();
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/call', callRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -124,8 +127,10 @@ io.on('connection', (socket) => {
             session.status = 'connected';
             session.startTime = Date.now();
 
-            // Set maximum 5-minute limit (300,000 ms)
-            const MAX_DURATION_MS = 5 * 60 * 1000;
+            // Fetch dynamic system call duration
+            const config = await configService.getConfig();
+            const durationSec = config.maxCallDurationSeconds || 300;
+            const MAX_DURATION_MS = durationSec * 1000;
             session.timeoutId = setTimeout(() => {
               handleCallTimeout(callId);
             }, MAX_DURATION_MS);
@@ -172,8 +177,10 @@ io.on('connection', (socket) => {
       session.status = 'connected';
       session.startTime = Date.now();
 
-      // Set maximum 5-minute (300,000 ms) server-side cap
-      const MAX_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+      // Fetch dynamic system call duration
+      const config = await configService.getConfig();
+      const durationSec = config.maxCallDurationSeconds || 300;
+      const MAX_DURATION_MS = durationSec * 1000;
       session.timeoutId = setTimeout(() => {
         handleCallTimeout(callId);
       }, MAX_DURATION_MS);
@@ -281,9 +288,11 @@ async function handleCallHangup(callId, hangupSocketId) {
 
     if (session.status === 'connected' && session.startTime) {
       durationSeconds = Math.round((Date.now() - session.startTime) / 1000);
-      // Ensure the cap is exactly 5 minutes (300 seconds) if client lags
-      if (durationSeconds > 300) {
-        durationSeconds = 300;
+      const config = await configService.getConfig();
+      const durationSec = config.maxCallDurationSeconds || 300;
+      // Ensure the cap is exactly max duration if client lags
+      if (durationSeconds > durationSec) {
+        durationSeconds = durationSec;
       }
       finalStatus = 'completed';
     } else {
@@ -329,7 +338,9 @@ async function handleCallTimeout(callId) {
   console.log(`[TIMEOUT CAP REACHED] Forcing call disconnect for: ${callId}`);
 
   try {
-    const durationSeconds = 300; // Exact 5 minutes
+    const config = await configService.getConfig();
+    const durationSec = config.maxCallDurationSeconds || 300;
+    const durationSeconds = durationSec; // Exact duration cap
     
     // Save call state
     await callService.endCall(callId, durationSeconds, 'completed');

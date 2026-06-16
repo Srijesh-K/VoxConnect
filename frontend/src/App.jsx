@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import AdminPanel from './components/AdminPanel';
 
 function MainApp() {
   const { user, token, loading } = useAuth();
+  const [view, setView] = useState('dashboard'); // dashboard, admin
 
   if (loading) {
     return (
@@ -25,8 +27,17 @@ function MainApp() {
     );
   }
 
-  // Render Login if no authenticated session, otherwise Dashboard
-  return token && user ? <Dashboard /> : <Login />;
+  // Render Login if no authenticated session
+  if (!token || !user) {
+    return <Login />;
+  }
+
+  // Render AdminPanel or Dashboard based on view state
+  return view === 'admin' ? (
+    <AdminPanel onBack={() => setView('dashboard')} />
+  ) : (
+    <Dashboard onAdminClick={() => setView('admin')} />
+  );
 }
 
 export default function App() {

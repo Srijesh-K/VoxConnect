@@ -1,8 +1,8 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, PhoneCall, BarChart2, Shield } from 'lucide-react';
+import { LogOut, PhoneCall, BarChart2, Shield, Settings } from 'lucide-react';
 
-export default function Header() {
+export default function Header({ onAdminClick }) {
   const { user, logout } = useAuth();
 
   if (!user) return null;
@@ -67,6 +67,15 @@ export default function Header() {
               </span>
             </div>
           </div>
+
+          {/* Admin Gear Button */}
+          <button
+            onClick={onAdminClick}
+            title="Admin Panel"
+            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 rounded-xl transition-all"
+          >
+            <Settings size={18} />
+          </button>
 
           {/* Logout Button */}
           <button

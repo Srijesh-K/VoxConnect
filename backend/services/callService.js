@@ -109,6 +109,22 @@ const callService = {
       .populate('caller', 'phoneNumber')
       .populate('recipient', 'phoneNumber')
       .sort({ createdAt: -1 });
+  },
+
+  getAllCalls: async () => {
+    if (global.isMockDB) {
+      return memoryCalls
+        .map(c => ({
+          ...c,
+          caller: c.callerDetails,
+          recipient: c.recipientDetails
+        }))
+        .sort((a, b) => b.createdAt - a.createdAt);
+    }
+    return await Call.find({})
+      .populate('caller', 'phoneNumber')
+      .populate('recipient', 'phoneNumber')
+      .sort({ createdAt: -1 });
   }
 };
 

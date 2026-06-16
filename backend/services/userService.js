@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const configService = require('./configService');
 
 // In-memory user store for fallback mode
 const memoryUsers = [];
@@ -28,20 +29,28 @@ const userService = {
 
   createUser: async (phoneNumber) => {
     const cleanNumber = phoneNumber.trim();
+    
+    // Fetch default trials count from config
+    const config = await configService.getConfig();
+    const trials = config.defaultTrialsCount || 5;
+
     if (global.isMockDB) {
       const newUser = {
         _id: generateMockId(),
         phoneNumber: cleanNumber,
-        trialsRemaining: 5,
+        trialsRemaining: trials,
         totalMinutesUsed: 0,
         createdAt: new Date()
       };
       memoryUsers.push(newUser);
-      console.log(`[MockDB] User created: ${cleanNumber}`);
+      console.log(`[MockDB] User created: ${cleanNumber} with ${trials} trials`);
       return { ...newUser };
     }
     
-    const user = new User({ phoneNumber: cleanNumber });
+    const user = new User({ 
+      phoneNumber: cleanNumber,
+      trialsRemaining: trials
+    });
     return await user.save();
   },
 
@@ -84,6 +93,46 @@ const userService = {
       { $inc: { totalMinutesUsed: minutes } },
       { new: true }
     );
+  },
+
+  // ADMIN METHODS
+  getAllUsers: async () => {
+    if (global.isMockDB) {
+      // Return clones of memoryUsers sorted by createdAt desc
+      return [...memoryUsers].sort((a, b) => b.createdAt - a.createdAt);
+    }
+    return await User.find({}).sort({ createdAt: -1 });
+  },
+
+  setTrials: async (userId, trialsCount) => {
+    const trials = parseInt(trialsCount);
+    if (global.isMockDB) {
+      const userIndex = memoryUsers.findIndex(u => u._id === userId);
+      if (userIndex !== -1) {
+        memoryUsers[userIndex].trialsRemaining = trials;
+        console.log(`[MockDB-Admin] Set trials to ${trials} for user ${userId}`);
+        return { ...memoryUsers[userIndex] };
+      }
+      return null;
+    }
+    return await User.findByIdAndUpdate(
+      userId,
+      { trialsRemaining: trials },
+      { new: true }
+    );
+  },
+
+  deleteUser: async (userId) => {
+    if (global.isMockDB) {
+      const index = memoryUsers.findIndex(u => u._id === userId);
+      if (index !== -1) {
+        const deleted = memoryUsers.splice(index, 1)[0];
+        console.log(`[MockDB-Admin] User deleted: ${deleted.phoneNumber}`);
+        return deleted;
+      }
+      return null;
+    }
+    return await User.findByIdAndDelete(userId);
   }
 };
 

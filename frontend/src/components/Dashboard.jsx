@@ -17,7 +17,7 @@ const iceServersConfig = {
   ]
 };
 
-export default function Dashboard() {
+export default function Dashboard({ onAdminClick }) {
   const { user, token, refreshProfile, updateStats } = useAuth();
   
   // Call State
@@ -463,7 +463,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col pb-12">
-      <Header />
+      <Header onAdminClick={onAdminClick} />
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 w-full flex-grow space-y-8 relative">
         {/* Call Panel Glassmorphism Card */}
