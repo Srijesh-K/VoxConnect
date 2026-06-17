@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Phone, Lock, Key, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Phone, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function Login() {
   const { requestOtp, verifyOtp, error: authError } = useAuth();
@@ -9,7 +9,6 @@ export default function Login() {
   const [step, setStep] = useState(1); // 1 = Phone Number, 2 = OTP
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState('');
-  const [mockOtpHelp, setMockOtpHelp] = useState('');
 
   // Handle Phone Submission
   const handlePhoneSubmit = async (e) => {
@@ -24,11 +23,8 @@ export default function Login() {
     }
 
     try {
-      const result = await requestOtp(phoneNumber);
+      await requestOtp(phoneNumber);
       setStep(2);
-      if (result.mockOtp) {
-        setMockOtpHelp(result.mockOtp);
-      }
     } catch (err) {
       setLocalError(err.message || 'Error requesting OTP. Try again.');
     } finally {
@@ -61,7 +57,6 @@ export default function Login() {
     setStep(1);
     setOtp('');
     setLocalError('');
-    setMockOtpHelp('');
   };
 
   return (
@@ -170,23 +165,6 @@ export default function Login() {
               </div>
             </div>
 
-            {mockOtpHelp && (
-              <div className="p-3.5 rounded-xl bg-slate-900 border border-sky-500/10 text-center">
-                <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5 mb-1.5">
-                  <Key size={12} className="text-sky-400" /> Mock OTP received:
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setOtp(mockOtpHelp)}
-                  className="font-mono font-bold text-lg text-sky-400 hover:text-sky-300 tracking-wider bg-sky-500/10 border border-sky-500/20 hover:border-sky-500/40 px-3 py-1 rounded-lg transition-all"
-                >
-                  {mockOtpHelp}
-                </button>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  (Click code to auto-fill)
-                </p>
-              </div>
-            )}
 
             <button
               type="submit"

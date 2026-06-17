@@ -84,11 +84,10 @@ io.on('connection', (socket) => {
         return socket.emit('call-error', { message: 'No call trials remaining. You cannot place a call.' });
       }
 
-      // Check if recipient is online. If not, route to Echo Bot
-      let recipientSocketId = getUserSocketId(recipientId);
-      const isBotCall = !recipientSocketId;
-      if (isBotCall) {
-        recipientSocketId = 'bot';
+      // Check if recipient is online
+      const recipientSocketId = getUserSocketId(recipientId);
+      if (!recipientSocketId) {
+        return socket.emit('call-error', { message: 'User is currently offline' });
       }
 
       // Create call record in DB (status: 'failed' initially)
@@ -111,52 +110,16 @@ io.on('connection', (socket) => {
         recipientPhoneNumber,
         status: 'ringing',
         startTime: null,
-        timeoutId: null,
-        isBot: isBotCall
+        timeoutId: null
       };
 
-      if (isBotCall) {
-        console.log(`Call Initiated (Simulated Bot Call): ${callId} from ${caller.phoneNumber} to ${recipientPhoneNumber}`);
-        // Simulate ringing for 1.2s, then auto-accept call
-        setTimeout(async () => {
-          const session = activeCalls[callId];
-          if (!session) return; // caller hung up before connection
-
-          try {
-            await callService.connectCall(callId);
-            session.status = 'connected';
-            session.startTime = Date.now();
-
-            // Fetch dynamic system call duration
-            const config = await configService.getConfig();
-            const durationSec = config.maxCallDurationSeconds || 300;
-            const MAX_DURATION_MS = durationSec * 1000;
-            session.timeoutId = setTimeout(() => {
-              handleCallTimeout(callId);
-            }, MAX_DURATION_MS);
-
-            // Notify caller that call was accepted by the virtual bot
-            socket.emit('call-accepted', {
-              callId,
-              recipientSocketId: 'bot'
-            });
-
-            console.log(`Simulated Bot Call Connected: ${callId}`);
-          } catch (err) {
-            console.error('Simulated Bot Call Connect Error:', err);
-            socket.emit('call-error', { message: 'Failed to connect simulated call' });
-          }
-        }, 1200);
-
-      } else {
-        // Emit incoming call to real recipient
-        io.to(recipientSocketId).emit('incoming-call', {
-          callId,
-          callerId,
-          callerPhoneNumber: caller.phoneNumber
-        });
-        console.log(`Call Initiated (Real): ${callId} from ${caller.phoneNumber} to ${recipientPhoneNumber}`);
-      }
+      // Emit incoming call to real recipient
+      io.to(recipientSocketId).emit('incoming-call', {
+        callId,
+        callerId,
+        callerPhoneNumber: caller.phoneNumber
+      });
+      console.log(`Call Initiated (Real): ${callId} from ${caller.phoneNumber} to ${recipientPhoneNumber}`);
     } catch (error) {
       console.error('Call User Error:', error);
       socket.emit('call-error', { message: 'Failed to initiate call due to server error' });

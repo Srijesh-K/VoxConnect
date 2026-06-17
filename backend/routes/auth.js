@@ -50,12 +50,9 @@ router.post('/request-otp', async (req, res) => {
     console.log(`Expires: ${new Date(expiresAt).toLocaleTimeString()}`);
     console.log('=======================================\n');
 
-    // Return response. In development we return the OTP in the body for easy testing
     res.status(200).json({
       message: 'OTP sent successfully (mock service)',
-      phoneNumber: cleanNumber,
-      // For development speed, return it directly so the client can auto-fill or print it.
-      mockOtp: otp 
+      phoneNumber: cleanNumber
     });
   } catch (error) {
     console.error('Request OTP Error:', error);

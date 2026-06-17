@@ -31,7 +31,6 @@ export default function Dashboard({ onAdminClick }) {
   // References for WebRTC and Sockets
   const socketRef = useRef(null);
   const pcRef = useRef(null);
-  const pcBotRef = useRef(null); // Reference for local loopback echo bot connection
   const localStreamRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const peerSocketIdRef = useRef(null); // socketId of the other peer
@@ -128,7 +127,7 @@ export default function Dashboard({ onAdminClick }) {
     });
 
     // Listen for ICE Candidates
-    socket.on('webrtc-ice-candidate', async ({ fromSocketId, candidate }) => {
+    socket.on('webrtc-ice-candidate', async ({ candidate }) => {
       if (pcRef.current) {
         try {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
@@ -140,6 +139,7 @@ export default function Dashboard({ onAdminClick }) {
 
     // Listen for Call Ended (from other side hanging up)
     socket.on('call-ended', ({ callId, reason }) => {
+      console.log(`Call ${callId} ended. Reason: ${reason}`);
       cleanupCallState();
       fetchHistory();
       refreshProfile();
@@ -147,6 +147,7 @@ export default function Dashboard({ onAdminClick }) {
 
     // Listen for Call Timeout (5 min limit reached)
     socket.on('call-timeout', ({ callId }) => {
+      console.log(`Call ${callId} timed out.`);
       alert('Maximum call limit of 5 minutes reached. Call automatically disconnected.');
       cleanupCallState();
       fetchHistory();
@@ -183,14 +184,10 @@ export default function Dashboard({ onAdminClick }) {
       localStreamRef.current = null;
     }
 
-    // Close peer connections
+    // Close peer connection
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
-    }
-    if (pcBotRef.current) {
-      pcBotRef.current.close();
-      pcBotRef.current = null;
     }
 
     // Stop audio player
@@ -266,110 +263,55 @@ export default function Dashboard({ onAdminClick }) {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
     } catch (err) {
+      console.error('Microphone access error (caller):', err);
       alert('Microphone permission is required to start a call.');
       handleHangup(callId);
       return;
     }
 
-    if (recipientSocketId === 'bot') {
-      // 2. Local Loopback (Echo Bot)
-      const pc = new RTCPeerConnection(iceServersConfig);
-      pcRef.current = pc;
+    // 2. Real Peer Connection
+    const pc = new RTCPeerConnection(iceServersConfig);
+    pcRef.current = pc;
 
-      const pcBot = new RTCPeerConnection(iceServersConfig);
-      pcBotRef.current = pcBot;
+    // Track connection state
+    pc.onconnectionstatechange = () => {
+      setConnectionState(pc.connectionState);
+    };
 
-      pc.onconnectionstatechange = () => {
-        setConnectionState(pc.connectionState);
-      };
+    // Send local tracks
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-      // Add local tracks to pc
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      // Exchange ICE candidates locally
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          pcBot.addIceCandidate(new RTCIceCandidate(event.candidate)).catch(e => {});
-        }
-      };
-
-      pcBot.onicecandidate = (event) => {
-        if (event.candidate) {
-          pc.addIceCandidate(new RTCIceCandidate(event.candidate)).catch(e => {});
-        }
-      };
-
-      // Play received tracks locally (echoes audio back to user)
-      pcBot.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (!remoteAudioRef.current) {
-          const audio = new Audio();
-          audio.srcObject = remoteStream;
-          audio.play().catch(e => console.error('Audio play failed:', e));
-          remoteAudioRef.current = audio;
-          setConnectionState('connected');
-        }
-      };
-
-      // Local SDP negotiation
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await pcBot.setRemoteDescription(offer);
-
-        const answer = await pcBot.createAnswer();
-        await pcBot.setLocalDescription(answer);
-        await pc.setRemoteDescription(answer);
-      } catch (err) {
-        console.error('Local WebRTC loopback SDP exchange failed:', err);
-        handleHangup(callId);
+    // Handle ICE Candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current) {
+        socketRef.current.emit('webrtc-ice-candidate', {
+          toSocketId: recipientSocketId,
+          candidate: event.candidate,
+          callId
+        });
       }
+    };
 
-    } else {
-      // 2. Real Peer Connection
-      const pc = new RTCPeerConnection(iceServersConfig);
-      pcRef.current = pc;
+    // Play Remote Audio Stream
+    pc.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      if (!remoteAudioRef.current) {
+        const audio = new Audio();
+        audio.srcObject = remoteStream;
+        audio.play().catch(e => console.error('Audio play failed:', e));
+        remoteAudioRef.current = audio;
+      }
+    };
 
-      // Track connection state
-      pc.onconnectionstatechange = () => {
-        setConnectionState(pc.connectionState);
-      };
+    // 3. Create & send Offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
 
-      // Send local tracks
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      // Handle ICE Candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit('webrtc-ice-candidate', {
-            toSocketId: recipientSocketId,
-            candidate: event.candidate,
-            callId
-          });
-        }
-      };
-
-      // Play Remote Audio Stream
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        if (!remoteAudioRef.current) {
-          const audio = new Audio();
-          audio.srcObject = remoteStream;
-          audio.play().catch(e => console.error('Audio play failed:', e));
-          remoteAudioRef.current = audio;
-        }
-      };
-
-      // 3. Create & send Offer
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      socketRef.current.emit('webrtc-offer', {
-        toSocketId: recipientSocketId,
-        offer,
-        callId
-      });
-    }
+    socketRef.current.emit('webrtc-offer', {
+      toSocketId: recipientSocketId,
+      offer,
+      callId
+    });
   };
 
   // 3. Accept Call (Recipient Side)
@@ -390,6 +332,7 @@ export default function Dashboard({ onAdminClick }) {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       localStreamRef.current = stream;
     } catch (err) {
+      console.error('Microphone access error (recipient):', err);
       alert('Microphone permission is required to accept this call.');
       handleHangup(callId);
       return;
