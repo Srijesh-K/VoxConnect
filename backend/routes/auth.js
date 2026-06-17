@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const userService = require('../services/userService');
+const smsService = require('../services/smsService');
 const { protect } = require('../middleware/auth');
 
 // In-memory OTP cache: { phoneNumber: { otp, expiresAt } }
@@ -42,16 +43,19 @@ router.post('/request-otp', async (req, res) => {
     // Store in cache
     otpCache[cleanNumber] = { otp, expiresAt };
 
-    // Print OTP in console with distinct styling
+    // Send SMS (or fallback to mock console output)
+    await smsService.sendOtp(cleanNumber, otp);
+
+    // Keep console log for backend debug/fallback verification
     console.log('\n=======================================');
-    console.log(`[VoxConnect OTP Mock Service]`);
+    console.log(`[VoxConnect OTP Backend Log]`);
     console.log(`Phone: ${cleanNumber}`);
     console.log(`OTP Code: ${otp}`);
     console.log(`Expires: ${new Date(expiresAt).toLocaleTimeString()}`);
     console.log('=======================================\n');
 
     res.status(200).json({
-      message: 'OTP sent successfully (mock service)',
+      message: 'OTP sent successfully',
       phoneNumber: cleanNumber
     });
   } catch (error) {

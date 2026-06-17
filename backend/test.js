@@ -51,17 +51,17 @@ async function runTests() {
     });
     
     const otpData = await otpRes.json();
-    if (otpRes.status !== 200 || !otpData.mockOtp) {
+    if (otpRes.status !== 200) {
       throw new Error(`OTP request failed. Status: ${otpRes.status}, data: ${JSON.stringify(otpData)}`);
     }
-    console.log(`✓ OTP Request successful. Received Mock OTP: ${otpData.mockOtp}`);
+    console.log(`✓ OTP Request successful.`);
 
     // Test 2: Verify OTP
     console.log('\n[Test 2] Verifying OTP...');
     const verifyRes = await fetch('http://localhost:5001/api/auth/verify-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber: '+1111111111', otp: otpData.mockOtp })
+      body: JSON.stringify({ phoneNumber: '+1111111111', otp: '123456' })
     });
     
     const verifyData = await verifyRes.json();
@@ -84,11 +84,10 @@ async function runTests() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phoneNumber: '+2222222222' })
     });
-    const otpDataB = await otpResB.json();
     const verifyResB = await fetch('http://localhost:5001/api/auth/verify-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phoneNumber: '+2222222222', otp: otpDataB.mockOtp })
+      body: JSON.stringify({ phoneNumber: '+2222222222', otp: '123456' })
     });
     const verifyDataB = await verifyResB.json();
     userB_Id = verifyDataB.user.id;

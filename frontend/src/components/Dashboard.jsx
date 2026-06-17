@@ -116,7 +116,7 @@ export default function Dashboard({ onAdminClick }) {
     });
 
     // Listen for WebRTC Answer (Caller Side)
-    socket.on('webrtc-answer', async ({ fromSocketId, answer }) => {
+    socket.on('webrtc-answer', async ({ answer }) => {
       if (pcRef.current) {
         try {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
