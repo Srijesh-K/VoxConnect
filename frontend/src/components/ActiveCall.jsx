@@ -62,11 +62,19 @@ export default function ActiveCall({ callSession, onHangup, connectionState }) {
               Ringing...
             </span>
           )}
-          {isConnected && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-              <span className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-              {connectionState === 'connected' ? 'Secure Connection' : 'Connecting Peer...'}
-            </span>
+           {isConnected && (
+            <div className="flex justify-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                <span className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                {connectionState === 'connected' ? 'Secure Connection' : 'Connecting Peer...'}
+              </span>
+              {connectionState === 'connected' && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
+                  <span className="h-1.5 w-1.5 bg-rose-500 rounded-full animate-ping"></span>
+                  Recording
+                </span>
+              )}
+            </div>
           )}
         </div>
 

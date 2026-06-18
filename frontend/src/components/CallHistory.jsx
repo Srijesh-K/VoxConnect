@@ -1,9 +1,94 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { PhoneIncoming, PhoneOutgoing, Calendar, Clock, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { listRecordings, getRecording, deleteRecording } from '../utils/recordingDb';
 
 export default function CallHistory({ history }) {
   const { user } = useAuth();
+  
+  const [recordingsList, setRecordingsList] = useState([]);
+  const [playingCallId, setPlayingCallId] = useState(null);
+  const [audioElement, setAudioElement] = useState(null);
+
+  const refreshRecordings = async () => {
+    const list = await listRecordings();
+    setRecordingsList(list);
+  };
+
+  useEffect(() => {
+    refreshRecordings();
+
+    const handleRecordingSaved = () => {
+      refreshRecordings();
+    };
+
+    window.addEventListener('recording-saved', handleRecordingSaved);
+    return () => {
+      window.removeEventListener('recording-saved', handleRecordingSaved);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (audioElement) {
+        audioElement.pause();
+      }
+    };
+  }, [audioElement]);
+
+  const handlePlayRecording = async (callId) => {
+    // Stop currently playing audio
+    if (audioElement) {
+      audioElement.pause();
+      if (playingCallId === callId) {
+        setPlayingCallId(null);
+        setAudioElement(null);
+        return;
+      }
+    }
+
+    // Fetch audio recording from IndexedDB
+    const record = await getRecording(callId);
+    if (record && record.blob) {
+      const url = URL.createObjectURL(record.blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        setPlayingCallId(null);
+        setAudioElement(null);
+      };
+      audio.play().catch(err => console.error('Failed to play recording:', err));
+      setPlayingCallId(callId);
+      setAudioElement(audio);
+    } else {
+      alert('Recording file not found.');
+    }
+  };
+
+  const handleDownloadRecording = async (callId, phoneNumber) => {
+    const record = await getRecording(callId);
+    if (record && record.blob) {
+      const url = URL.createObjectURL(record.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `recording_${phoneNumber || 'call'}_${callId.substring(0, 8)}.webm`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      alert('Recording file not found.');
+    }
+  };
+
+  const handleDeleteRecording = async (callId) => {
+    if (window.confirm('Are you sure you want to delete this call recording?')) {
+      if (audioElement && playingCallId === callId) {
+        audioElement.pause();
+        setPlayingCallId(null);
+        setAudioElement(null);
+      }
+      await deleteRecording(callId);
+      await refreshRecordings();
+    }
+  };
 
   // Format date to local string
   const formatDate = (dateStr) => {
@@ -88,6 +173,7 @@ export default function CallHistory({ history }) {
               <th className="py-3 px-6">Date & Time</th>
               <th className="py-3 px-6">Duration</th>
               <th className="py-3 px-6">Status</th>
+              <th className="py-3 px-6">Recording</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/40 text-sm text-slate-300">
@@ -98,6 +184,8 @@ export default function CallHistory({ history }) {
               const contactNumber = isOutgoing 
                 ? (typeof call.recipient === 'object' ? call.recipient?.phoneNumber : call.recipientPhoneNumber)
                 : (typeof call.caller === 'object' ? call.caller?.phoneNumber : 'Unknown Caller');
+
+              const hasRecording = recordingsList.includes(call._id);
 
               return (
                 <tr key={call._id} className="hover:bg-slate-900/20 transition-colors">
@@ -136,6 +224,38 @@ export default function CallHistory({ history }) {
                   {/* Status */}
                   <td className="py-4 px-6">
                     {getStatusBadge(call.status)}
+                  </td>
+
+                  {/* Recording */}
+                  <td className="py-4 px-6">
+                    {hasRecording ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handlePlayRecording(call._id)}
+                          className={`px-3 py-1 text-xs rounded-lg font-semibold transition-all border ${
+                            playingCallId === call._id
+                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                          }`}
+                        >
+                          {playingCallId === call._id ? 'Pause' : 'Play'}
+                        </button>
+                        <button
+                          onClick={() => handleDownloadRecording(call._id, contactNumber)}
+                          className="px-3 py-1 text-xs rounded-lg font-semibold bg-sky-500/10 border border-sky-500/30 text-sky-400 hover:bg-sky-500/20 transition-all"
+                        >
+                          Download
+                        </button>
+                        <button
+                          onClick={() => handleDeleteRecording(call._id)}
+                          className="px-3 py-1 text-xs rounded-lg font-semibold bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 transition-all"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-slate-600 font-mono text-xs">-</span>
+                    )}
                   </td>
                 </tr>
               );

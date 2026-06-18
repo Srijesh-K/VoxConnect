@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
+import { saveRecording } from '../utils/recordingDb';
 import Header from './Header';
 import CallHistory from './CallHistory';
 import ActiveCall from './ActiveCall';
@@ -48,6 +49,12 @@ export default function Dashboard({ onAdminClick }) {
   const localStreamRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const peerSocketIdRef = useRef(null); // socketId of the other peer
+
+  // Call Recording Refs
+  const remoteStreamRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
 
   // Fetch Call History
   const fetchHistory = async () => {
@@ -192,6 +199,42 @@ export default function Dashboard({ onAdminClick }) {
 
   // Clean up Peer Connections & Streams
   const cleanupCallState = () => {
+    // Stop and save call recording
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      const currentCallId = callSession?.callId;
+      const currentRecipientNumber = callSession?.role === 'caller'
+        ? callSession.recipientPhoneNumber
+        : callSession.callerPhoneNumber;
+      
+      mediaRecorderRef.current.onstop = async () => {
+        try {
+          const audioBlob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+          if (audioBlob.size > 1000 && currentCallId) {
+            console.log(`[Recorder] Saving call recording for ${currentCallId}...`);
+            await saveRecording(currentCallId, audioBlob, currentRecipientNumber);
+            console.log('[Recorder] Call recording saved to IndexedDB.');
+            
+            // Dispatch event to notify CallHistory to refresh
+            window.dispatchEvent(new CustomEvent('recording-saved'));
+          }
+        } catch (err) {
+          console.error('[Recorder] Failed to save call recording:', err);
+        }
+      };
+
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (err) {
+        console.error('[Recorder] Error stopping MediaRecorder:', err);
+      }
+    }
+
+    // Close AudioContext
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+
     // Stop local tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -209,10 +252,52 @@ export default function Dashboard({ onAdminClick }) {
       remoteAudioRef.current.srcObject = null;
     }
 
+    remoteStreamRef.current = null;
     setCallSession(null);
     setConnectionState('new');
     setLoading(false);
     peerSocketIdRef.current = null;
+  };
+
+  // Web Audio Call Recording mixing logic
+  const startRecordingCall = (localStream, remoteStream) => {
+    try {
+      console.log('[Recorder] Initializing Web Audio context...');
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtxRef.current = audioContext;
+
+      const dest = audioContext.createMediaStreamDestination();
+
+      // Add local microphone stream to mix
+      if (localStream && localStream.getAudioTracks().length > 0) {
+        const localSource = audioContext.createMediaStreamSource(localStream);
+        localSource.connect(dest);
+        console.log('[Recorder] Local microphone source connected to mixer.');
+      }
+
+      // Add remote incoming call stream to mix
+      if (remoteStream && remoteStream.getAudioTracks().length > 0) {
+        const remoteSource = audioContext.createMediaStreamSource(remoteStream);
+        remoteSource.connect(dest);
+        console.log('[Recorder] Remote stream source connected to mixer.');
+      }
+
+      // Start recording the mixed stream
+      recordedChunksRef.current = [];
+      const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.start();
+      console.log('[Recorder] MediaRecorder started recording call.');
+    } catch (err) {
+      console.error('[Recorder] Failed to start call recording:', err);
+    }
   };
 
   // 2. Initiate Call (Caller Side)
@@ -289,6 +374,9 @@ export default function Dashboard({ onAdminClick }) {
     // Track connection state
     pc.onconnectionstatechange = () => {
       setConnectionState(pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        startRecordingCall(localStreamRef.current, remoteStreamRef.current);
+      }
     };
 
     // Send local tracks
@@ -308,6 +396,7 @@ export default function Dashboard({ onAdminClick }) {
     // Play Remote Audio Stream
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
+      remoteStreamRef.current = remoteStream;
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream;
         remoteAudioRef.current.play().catch(e => console.error('Audio play failed:', e));
@@ -355,6 +444,9 @@ export default function Dashboard({ onAdminClick }) {
 
     pc.onconnectionstatechange = () => {
       setConnectionState(pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        startRecordingCall(localStreamRef.current, remoteStreamRef.current);
+      }
     };
 
     // Add local tracks
@@ -374,6 +466,7 @@ export default function Dashboard({ onAdminClick }) {
     // Play Remote Audio Stream
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
+      remoteStreamRef.current = remoteStream;
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream;
         remoteAudioRef.current.play().catch(e => console.error('Audio play failed:', e));
