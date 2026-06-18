@@ -10,11 +10,25 @@ import { Phone, Search, AlertCircle, AlertTriangle, Settings } from 'lucide-reac
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
-const iceServersConfig = {
-  iceServers: [
+const getIceServersConfig = () => {
+  const servers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+  ];
+
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnPassword = import.meta.env.VITE_TURN_PASSWORD;
+
+  if (turnUrl) {
+    servers.push({
+      urls: turnUrl,
+      username: turnUsername || '',
+      credential: turnPassword || ''
+    });
+  }
+
+  return { iceServers: servers };
 };
 
 export default function Dashboard({ onAdminClick }) {
@@ -193,7 +207,6 @@ export default function Dashboard({ onAdminClick }) {
     // Stop audio player
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null;
-      remoteAudioRef.current = null;
     }
 
     setCallSession(null);
@@ -270,7 +283,7 @@ export default function Dashboard({ onAdminClick }) {
     }
 
     // 2. Real Peer Connection
-    const pc = new RTCPeerConnection(iceServersConfig);
+    const pc = new RTCPeerConnection(getIceServersConfig());
     pcRef.current = pc;
 
     // Track connection state
@@ -295,11 +308,9 @@ export default function Dashboard({ onAdminClick }) {
     // Play Remote Audio Stream
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
-      if (!remoteAudioRef.current) {
-        const audio = new Audio();
-        audio.srcObject = remoteStream;
-        audio.play().catch(e => console.error('Audio play failed:', e));
-        remoteAudioRef.current = audio;
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(e => console.error('Audio play failed:', e));
       }
     };
 
@@ -339,7 +350,7 @@ export default function Dashboard({ onAdminClick }) {
     }
 
     // 2. Create peer connection
-    const pc = new RTCPeerConnection(iceServersConfig);
+    const pc = new RTCPeerConnection(getIceServersConfig());
     pcRef.current = pc;
 
     pc.onconnectionstatechange = () => {
@@ -363,11 +374,9 @@ export default function Dashboard({ onAdminClick }) {
     // Play Remote Audio Stream
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
-      if (!remoteAudioRef.current) {
-        const audio = new Audio();
-        audio.srcObject = remoteStream;
-        audio.play().catch(e => console.error('Audio play failed:', e));
-        remoteAudioRef.current = audio;
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(e => console.error('Audio play failed:', e));
       }
     };
 
@@ -501,6 +510,9 @@ export default function Dashboard({ onAdminClick }) {
           onReject={handleRejectCall}
         />
       )}
+
+      {/* Hidden audio element for remote stream playback */}
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
     </div>
   );
 }
